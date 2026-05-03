@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>XAUUSD 风险参考计算器</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f7fa;
+            margin: 0;
+            padding: 16px;
+            color: #2c3e50;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        }
+        h2 {
+            margin: 0 0 12px 0;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+        }
+        .input-group {
+            margin-bottom: 12px;
+        }
+        label {
+            display: block;
+            font-size: 13px;
+            color: #7f8c8d;
+            margin-bottom: 4px;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #dcdfe6;
+            border-radius: 8px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .row {
+            display: flex;
+            gap: 8px;
+        }
+        .row .input-group {
+            flex: 1;
+        }
+        .result-highlight {
+            background: #f0f7ff;
+            border-left: 4px solid #409eff;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 12px 0;
+            font-size: 14px;
+        }
+        .stat-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 8px 0;
+        }
+        .stat-table td {
+            padding: 6px 4px;
+            border-bottom: 1px solid #eee;
+            font-size: 13px;
+        }
+        .stat-table td:first-child {
+            color: #7f8c8d;
+            width: 40%;
+        }
+        .stat-table td:last-child {
+            font-weight: 600;
+        }
+        .disclaimer {
+            font-size: 11px;
+            color: #95a5a6;
+            margin-top: 16px;
+            line-height: 1.5;
+            border-top: 1px solid #eee;
+            padding-top: 12px;
+        }
+        .btn {
+            background: #409eff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-size: 14px;
+            width: 100%;
+            cursor: pointer;
+        }
+        .buy-sell-indicator {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 6px;
+        }
+        .buy { background: #e6ffed; color: #2e7d32; }
+        .sell { background: #ffeef0; color: #c62828; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>🧮 XAUUSD 风险参考计算器 <span style="font-size:12px; font-weight:normal; color:#7f8c8d; margin-left:8px;">(基于波动统计)</span></h2>
+
+    <div class="input-group">
+        <label>当前参考价格 (中间价)</label>
+        <input type="number" id="currentPrice" step="0.01" placeholder="例如 1925.30">
+    </div>
+
+    <div class="row">
+        <div class="input-group">
+            <label>近期平均真实波幅 (ATR, 美元)</label>
+            <input type="number" id="atr" step="0.1" placeholder="例如 2.5">
+        </div>
+        <div class="input-group">
+            <label>ATR 倍数 (统计边界)</label>
+            <select id="atrMultiplier">
+                <option value="1">1倍 (约68%概率区间)</option>
+                <option value="1.5" selected>1.5倍</option>
+                <option value="2">2倍 (约95%概率区间)</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="input-group">
+            <label>您的本金 (美元)</label>
+            <input type="number" id="capital" placeholder="例如 500">
+        </div>
+        <div class="input-group">
+            <label>计划风险比例 (%)</label>
+            <select id="riskPercent">
+                <option value="0.5">0.5% (保守)</option>
+                <option value="1" selected>1%</option>
+                <option value="2">2% (激进)</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="input-group">
+        <label>杠杆倍数</label>
+        <input type="number" id="leverage" value="1000" step="100">
+    </div>
+
+    <button class="btn" onclick="calculate()">计算参考手数与波动区间</button>
+
+    <div id="result" style="display:none; margin-top:16px;">
+        <div class="result-highlight">
+            <strong>📊 统计参考结果</strong>
+            <div id="resultContent"></div>
+        </div>
+        <div class="disclaimer">
+            ⚠️ <strong>重要声明</strong>：本工具仅基于您输入的波动率参数进行纯数学估算，<strong>不构成任何投资建议或交易指令</strong>。
+            所有边界值均为统计概率参考，实际市场可能出现远超该范围的波动。交易决策与风险由您自主独立承担。
+        </div>
+    </div>
+</div>
+
+<script>
+    // 从URL参数预填充
+    function getQueryParam(name) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(name);
+    }
+
+    window.onload = function() {
+        const price = getQueryParam('price');
+        const atr = getQueryParam('atr');
+        const pair = getQueryParam('pair');
+        if (price) document.getElementById('currentPrice').value = price;
+        if (atr) document.getElementById('atr').value = atr;
+        if (pair === 'XAUUSD') {
+            document.title = 'XAUUSD 风险参考计算器';
+        }
+        // 默认填入示例数据以便演示
+        if (!price) document.getElementById('currentPrice').value = 1925.30;
+        if (!atr) document.getElementById('atr').value = 2.5;
+    };
+
+    function formatNumber(num, decimals = 2) {
+        return num.toFixed(decimals);
+    }
+
+    function calculate() {
+        const price = parseFloat(document.getElementById('currentPrice').value);
+        const atr = parseFloat(document.getElementById('atr').value);
+        const mult = parseFloat(document.getElementById('atrMultiplier').value);
+        const capital = parseFloat(document.getElementById('capital').value);
+        const riskPct = parseFloat(document.getElementById('riskPercent').value) / 100;
+        const leverage = parseFloat(document.getElementById('leverage').value);
+
+        if (isNaN(price) || isNaN(atr) || isNaN(capital) || capital <= 0 || leverage <= 0) {
+            alert('请填写所有必填字段');
+            return;
+        }
+
+        // 波动区间计算
+        const lowerBound = price - atr * mult;
+        const upperBound = price + atr * mult;
+        const riskDistance = price - lowerBound;  // 下侧距离
+        const rewardDistance = upperBound - price; // 上侧距离
+
+        // 仓位估算（假设风险暴露为下侧距离 * 每点价值）
+        // XAUUSD 标准手每点价值 = 1美元 (1手=100盎司, 1点=0.01美元价格变动? 注意: 通常1点=0.01, 1标准手盈亏=1美元/0.01)
+        // 简化：我们假设1标准手(100盎司)每波动0.01美元，盈亏为1美元。所以1000倍杠杆下，0.01手保证金要求极小。
+        // 更精确：1手 = 100盎司，每0.01美元变动 = 1美元盈亏。故每点价值(0.01) = 1美元。
+        // 如果止损距离为riskDistance美元，那么每标准手亏损 = riskDistance / 0.01 * 1 = riskDistance * 100 美元。
+        // 这显然太大。实际上0.01手：1手=100盎司，0.01手=1盎司，每点价值0.01美元，所以止损距离X美元对应的亏损 = (riskDistance / 0.01) * 0.01 = riskDistance 美元。
+        // 简便算法：假设1迷你手(0.1手)每点价值0.1美元，0.01手每点价值0.01美元。
+        // 一般实用：我们给出手数的参考基于“每一美元波动对应盈亏1美元”的合约规格。
+        // 即：1标准手（100盎司） → 每0.01美元价格变化盈亏1美元。
+        // 所以价格波动1美元 → 盈亏100美元。
+        // 如果止损距离为riskDistance美元，那么1手亏损 = riskDistance * 100美元。
+        // 客户本金capital，可承受亏损 = capital * riskPct。
+        // 因此建议手数 = (capital * riskPct) / (riskDistance * 100) 标准手。
+        const maxLossAmount = capital * riskPct;
+        // 注意：在某些账户，1手=100盎司，点差可能按点计算，这里简化处理
+        const lotsStd = maxLossAmount / (riskDistance * 100);
+        // 转换为常见单位（0.01手递增）
+        const lotsMini = lotsStd * 10;  // 迷你手
+        const lotsMicro = lotsStd * 100; // 微型手(0.01手)
+
+        // 显示结果
+        let html = `
+            <table class="stat-table">
+                <tr><td>参考下侧边界</td><td style="color:#e74c3c;">${formatNumber(lowerBound)} 美元</td></tr>
+                <tr><td>参考上侧边界</td><td style="color:#27ae60;">${formatNumber(upperBound)} 美元</td></tr>
+                <tr><td>下侧统计距离</td><td>${formatNumber(riskDistance)} 美元</td></tr>
+                <tr><td>上侧统计距离</td><td>${formatNumber(rewardDistance)} 美元</td></tr>
+                <tr><td>潜在盈亏比 (统计值)</td><td>1 : ${formatNumber(rewardDistance/riskDistance)}</td></tr>
+                <tr style="border-top:2px solid #ddd;"><td>账户可承担最大亏损</td><td>${formatNumber(maxLossAmount)} 美元</td></tr>
+                <tr><td>参考手数 (标准手)</td><td>${formatNumber(lotsStd, 3)} 手</td></tr>
+                <tr><td>参考手数 (迷你手 0.1)</td><td>${formatNumber(lotsMini, 2)} 手</td></tr>
+                <tr><td>参考手数 (微型手 0.01)</td><td>${formatNumber(lotsMicro, 1)} 手</td></tr>
+                <tr><td>每0.01手价值</td><td>0.01美元/点 (0.01美元波动)</td></tr>
+            </table>
+            <p style="font-size:12px; color:#7f8c8d; margin:8px 0 0 0;">
+                * 手数基于假设风险暴露于下侧边界，实际请根据您的个人策略调整。
+            </p>
+        `;
+        document.getElementById('resultContent').innerHTML = html;
+        document.getElementById('result').style.display = 'block';
+    }
+</script>
+
+</body>
+</html>
